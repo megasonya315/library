@@ -7,6 +7,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -16,14 +18,32 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 public class TextIndexCli {
     private static final Logger log = LoggerFactory.getLogger(TextIndexCli.class);
-    private static final String PROMPT = "textindex> ";
+    private static final String PROMPT = "library> ";
     private final TextIndex index;
     private final AtomicBoolean running = new AtomicBoolean(true);
 
-    public TextIndexCli(TextIndex index) { this.index = index; }
+    public TextIndexCli(TextIndex index) {
+        this.index = index;
+    }
 
     public static void main(String[] args) throws Exception {
-        IndexConfig config = IndexConfig.builder().build();
+        Charset charset = StandardCharsets.UTF_8;
+
+        for (int i = 0; i < args.length; i++) {
+            if ("--charset".equals(args[i]) && i + 1 < args.length) {
+                try {
+                    charset = Charset.forName(args[i + 1]);
+                    System.out.println("Используется кодировка: " + charset.name());
+                } catch (Exception e) {
+                    System.err.println("Неизвестная кодировка: " + args[i + 1] + ". Используется UTF-8.");
+                }
+            }
+        }
+
+        IndexConfig config = IndexConfig.builder()
+                .charset(charset)
+                .build();
+
         TextIndex index = TextIndexFactory.createTextIndex(config);
 
         TextIndexCli cli = new TextIndexCli(index);
@@ -47,13 +67,15 @@ public class TextIndexCli {
                 processCommand(line);
             } catch (Exception e) {
                 System.err.println("Ошибка: " + e.getMessage());
-                log.error("Попытка выполнения команды не увенчалась успехом(", e);
+                log.error("Попытка выполнения команды не увенчалась успехом", e);
             }
         }
         cleanup();
     }
 
-    public void stop() { running.set(false); }
+    public void stop() {
+        running.set(false);
+    }
 
     private void processCommand(String command) throws IOException {
         String[] parts = command.split("\\s+", 2);
@@ -93,19 +115,21 @@ public class TextIndexCli {
             }
             case "help" -> {
                 System.out.println("Доступные команды: add <path>, remove <path>, search <word>, status, help, quit");
+                System.out.println("Параметры запуска: --charset <название> (например, windows-1251, UTF-8)");
             }
             case "quit", "exit" -> {
                 System.out.println("Выходим...");
                 stop();
             }
-            default -> {
-                System.out.println("Неизвестная команда. Введите 'help'.");
-            }
+            default -> System.out.println("Неизвестная команда. Введите 'help'.");
         }
     }
 
     private void cleanup() {
-        try { if (index != null) index.close(); }
-        catch (Exception e) { log.error("Ошибка завершения работы", e); }
+        try {
+            if (index != null) index.close();
+        } catch (Exception e) {
+            log.error("Ошибка завершения работы", e);
+        }
     }
 }

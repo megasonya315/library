@@ -3,6 +3,7 @@ package com.library.core;
 import com.library.api.IndexConfig;
 import com.library.api.TextIndex;
 import com.library.api.TextTokenizer;
+import com.library.watcher.RecursiveFileWatcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +32,7 @@ public class InMemoryTextIndex implements TextIndex {
     private final IndexConfig config;
     private final TextTokenizer tokenizer;
     private volatile boolean closed = false;
+    private final RecursiveFileWatcher watcher;
 
     public InMemoryTextIndex(IndexConfig config, TextTokenizer tokenizer) {
         this.config = Objects.requireNonNull(config, "Конфиг не может быть null");
@@ -43,6 +45,13 @@ public class InMemoryTextIndex implements TextIndex {
                 new NamedThreadFactory("textindex-worker"),
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+
+        try {
+            this.watcher = new RecursiveFileWatcher(config, this::submitIndexTask);
+            this.watcher.start();
+        } catch (IOException e) {
+            throw new UncheckedIOException("Не удалось инициализировать watcher", e);
+        }
     }
 
     @Override
@@ -60,6 +69,7 @@ public class InMemoryTextIndex implements TextIndex {
             } catch (IOException e) {
                 throw new IOException("Не удалось обойти каталог: " + realPath, e);
             }
+            watcher.register(realPath);
         } else {
             throw new NoSuchFileException("Файл или каталог не найден: " + path);
         }
@@ -127,12 +137,20 @@ public class InMemoryTextIndex implements TextIndex {
             executor.shutdownNow();
             Thread.currentThread().interrupt();
         }
+        watcher.close();
     }
 
     //Внутренние методы и классы
 
     private void submitIndexTask(Path file) {
         try {
+            // Если файл удалён или стал директорией/недоступен, чистим индекс
+            if (!Files.exists(file) || !Files.isRegularFile(file)) {
+                rwLock.writeLock().lock();
+                try { removeFromIndex(file); } finally { rwLock.writeLock().unlock(); }
+                return;
+            }
+
             long size = Files.size(file);
             if (size > config.getMaxFileSizeBytes()) {
                 log.warn("Пропуск файла, превышающего лимит: {} ({} байт)", file, size);

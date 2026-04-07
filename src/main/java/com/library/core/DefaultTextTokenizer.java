@@ -2,7 +2,8 @@ package com.library.core;
 
 import com.library.api.TextTokenizer;
 
-import java.util.logging.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -10,7 +11,7 @@ import java.util.stream.Stream;
 
 public class DefaultTextTokenizer implements TextTokenizer {
 
-    private static final Logger log = Logger.getLogger(DefaultTextTokenizer.class.getName());
+    private static final Logger log = LoggerFactory.getLogger(DefaultTextTokenizer.class);
     private static final Pattern WORD_PATTERN = Pattern.compile("\\p{L}[\\p{L}\\p{N}_]*");
 
     @Override
